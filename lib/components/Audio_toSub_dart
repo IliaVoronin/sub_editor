@@ -1,0 +1,69 @@
+import 'dart:io';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:natural_language/natural_language.dart';
+
+void main() async {
+  final speech = stt.SpeechToText();
+  await speech.initialize();
+
+  // Load the audio file into memory
+  final file = File('audio_file.mp3');
+  final bytes = await file.readAsBytes();
+
+  // Convert the audio file into text using the Google Cloud Speech-to-Text API
+  final result = await speech.recognize(bytes);
+
+  if (result.finalResult) {
+    // Split the text into sentences using the Punkt algorithm
+    final tokenizer = PunktSentenceTokenizer();
+    final sentences = tokenizer.tokenize(result.recognizedWords);
+
+    // Generate time-codes for each sentence
+    final timeCodes = _generateTimeCodes(sentences);
+
+    // Generate subtitles based on the text and time-codes
+    final subtitles = _generateSubtitles(sentences, timeCodes);
+    
+    // Output the subtitles to a file
+    final output = File('subtitles.srt');
+    output.writeAsStringSync(subtitles);
+  }
+}
+
+List<Duration> _generateTimeCodes(List<String> sentences) {
+  final timeCodes = <Duration>[];
+
+  // Calculate the duration of each sentence based on its length
+  // and a predefined reading speed
+  const readingSpeed = 3.0; // seconds per character
+  for (final sentence in sentences) {
+    final duration = Duration(
+        seconds: (sentence.length * readingSpeed).ceil()
+    );
+    timeCodes.add(duration);
+  }
+
+  return timeCodes;
+}
+
+String _generateSubtitles(List<String> sentences, List<Duration> timeCodes) {
+  final sb = StringBuffer();
+  for (int i = 0; i < sentences.length; i++) {
+    final timeCodeStart = timeCodes.sublist(0, i).reduce((a, b) => a + b);
+    final timeCodeEnd = timeCodes.sublist(0, i + 1).reduce((a, b) => a + b);
+    sb.write('${i + 1}\n');
+    sb.write('${_formatTimeCode(timeCodeStart)} --> ${_formatTimeCode(timeCodeEnd)}\n');
+    sb.write('${sentences[i]}\n');
+    sb.write('\n');
+  }
+  return sb.toString();
+}
+
+String _formatTimeCode(Duration duration) {
+  String twoDigits(int n) => n.toString().padLeft(2, '0');
+  String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
+  String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
+  String twoDigitMilliseconds =
+      twoDigits(duration.inMilliseconds.remainder(1000) ~/ 10);
+  return '$twoDigitMinutes:$twoDigitSeconds,$twoDigitMilliseconds';
+}
